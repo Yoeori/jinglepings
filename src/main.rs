@@ -1,11 +1,14 @@
 extern crate rawsock;
 extern crate image;
+extern crate pnet;
 
 use rawsock::open_best_library;
 use std::path::Path;
 use image::GenericImageView;
 use image::Pixel;
 use std::env;
+use pnet::datalink;
+
 
 const ICMP_PACKET: [u8; 62] = [
     0x00, 0x05, 0x73, 0xa0, 0x00, 0x00, 0xc8, 0x5b, 0x76, 0x3c, 0x7f, 0x2f, 0x86, 0xdd, // ethernet
@@ -26,7 +29,19 @@ fn main() {
     let lib = open_best_library().expect("Could not open any packet capturing library");
     println!("Library opened, version is {}", lib.version());
 
-    let interf_name = env::args().nth(4).unwrap(); //replace with whatever is available on your platform
+
+    // Pnet
+    let interf_name: String = env::args().nth(4).unwrap(); //replace with whatever is available on your platform
+    let interface = datalink::interfaces().into_iter().find(|iface| iface.name == interf_name).unwrap();
+    let mac = interface.mac.unwrap().octets();
+
+    dbg!(mac);
+
+    let mut basic_icmp_packet = ICMP_PACKET.clone();
+    for i in 0..6 {
+        basic_icmp_packet[i + 6] = mac[i];
+    }
+
     println!("Opening the {} interface", interf_name);
 
     let interf = lib.open_interface(&interf_name).expect("Could not open network interface");
@@ -43,11 +58,11 @@ fn main() {
     for (px, py, pixel) in img.pixels() {
         let c = pixel.channels();
         if c[3] > 230 {
-            let mut v = ICMP_PACKET.clone();
+            let mut v = basic_icmp_packet.clone();
 
             let x = px + sx;
             let y = py + sy;
-            let l = ICMP_PACKET.len()-8;
+            let l = basic_icmp_packet.len()-8;
 
             v[l-8] = (x >> 8) as u8;
             v[l-7] = (x & 0xff) as u8;
