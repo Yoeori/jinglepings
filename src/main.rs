@@ -4,10 +4,13 @@ extern crate pnet;
 
 use rawsock::open_best_library;
 use std::path::Path;
+use std::thread;
 use image::GenericImageView;
 use image::Pixel;
 use std::env;
 use pnet::datalink;
+use rand::thread_rng;
+use rand::seq::SliceRandom;
 
 
 const ICMP_PACKET: [u8; 62] = [
@@ -79,10 +82,31 @@ fn main() {
 
     //send some packets
     println!("Sending packets...");
-    loop {
-        for packet in &packets {
-            interf.send(packet).expect("Could not send packet"); 
-        }
+
+
+    let mut join_handles = vec![];
+
+    for _ in 0..env::args().nth(5).unwrap().parse::<u32>().unwrap() {
+        let mut packets = packets.clone();
+        packets.shuffle(&mut thread_rng());
+        let interf_name = interf_name.clone();
+
+        join_handles.push(thread::spawn(move || {
+
+            let packets = packets.clone();
+            let lib = open_best_library().expect("Could not open any packet capturing library");
+            let interf = lib.open_interface(&interf_name).expect("Could not open network interface");
+
+
+            println!("Starting thread {:?}", thread::current().id());
+            loop {
+                for packet in &packets {
+                    interf.send(packet).expect("Could not send packet"); 
+                }
+            }
+        }));
     }
+
+    join_handles.into_iter().for_each(|handle| handle.join().unwrap());
 
 }
